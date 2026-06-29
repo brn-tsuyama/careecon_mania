@@ -206,6 +206,9 @@ tempCodeRunnerFile.py
 # Ruff stuff:
 .ruff_cache/
 
+# Playwright captures (生データ。knowledge/ に変換済みのものだけ commit する)
+captures/
+
 # PyPI configuration file
 .pypirc
 

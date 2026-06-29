@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_SYSTEM_PYTHON: "1"
+
+jobs:
+  # ─── 静的解析 ─────────────────────────────────────────────────────────────
+  lint:
+    name: "Lint (ruff)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: ruff format check
+        run: uv run ruff format --check --diff .
+
+      - name: ruff lint
+        run: uv run ruff check --output-format=github .
+
+  # ─── 型チェック ──────────────────────────────────────────────────────────
+  typecheck:
+    name: "Type check (mypy)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: mypy
+        run: uv run mypy src
+
+  # ─── テスト ──────────────────────────────────────────────────────────────
+  test:
+    name: "Test (Python ${{ matrix.python-version }})"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run tests
+        run: uv run pytest -n auto
+
+      - name: Upload coverage
+        if: matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.xml
+          fail_ci_if_error: true
+
+  # ─── セキュリティスキャン ─────────────────────────────────────────────────
+  security:
+    name: "Security (bandit + pip-audit)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: bandit (ruff/S ルール経由でカバーされているが念のため)
+        run: uv run ruff check --select S --output-format=github .
+
+      - name: pip-audit (依存パッケージの脆弱性チェック)
+        run: |
+          uv tool install pip-audit
+          uv run pip-audit
+
+  # ─── 全ジョブ成功ゲート ──────────────────────────────────────────────────
+  ci-gate:
+    name: "CI Gate"
+    needs: [lint, typecheck, test, security]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [[ "${{ needs.lint.result }}" != "success" ||
+                "${{ needs.typecheck.result }}" != "success" ||
+                "${{ needs.test.result }}" != "success" ||
+                "${{ needs.security.result }}" != "success" ]]; then
+            echo "One or more required jobs failed."
+            exit 1
+          fi
+          echo "All checks passed."
