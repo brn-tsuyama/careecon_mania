@@ -160,6 +160,64 @@ getUnitNameForLargeProcess(largeProcess: LargeProcess): string {
 
 ---
 
+## DOM調査による実測（2026-06-29）
+
+### 調査手法
+
+Playwright（headless Chromium）でログイン → 案件「山室 デモ」の工程表を走査。
+
+### APIレスポンス実測値
+
+```json
+[
+  {
+    "name": "山室　デモ",
+    "progress_type": "refer_to_small_process",
+    "unit_type_id": null,
+    "progress": 0.0,
+    "target": 100.0,
+    "published_small_processes": []
+  },
+  {
+    "name": "大工程A",
+    "progress_type": "refer_to_small_process",
+    "unit_type_id": 1,
+    "progress": 0.0,
+    "target": 0.0,
+    "published_small_processes": [
+      {
+        "name": "小工程A",
+        "progress_type": "percentage",
+        "unit_type_id": 1,
+        "progress": 0.0,
+        "target": 100.0
+      }
+    ]
+  }
+]
+```
+
+### UI実測（AOM スナップショット）
+
+```yaml
+- button "現在の進捗: 0 % / 目標: 100 %" [disabled]   # 山室 デモ
+- button "現在の進捗: 0 % / 目標: 100 %" [disabled]   # 大工程A
+- text: 0 %   # ガントバー表示
+- text: 0 %
+```
+
+**確認できたこと:**
+- `refer_to_small_process` モードの大工程が実際に存在している
+- `unit_type_id: null` の大工程が存在（getUnitName(null) のバグが影響する）
+- UI は `0 % / 目標: 100 %` のまま表示（単位の引き継ぎなし）
+- 小工程が `percentage` モードの場合は % 表示になる（バグが顕在化するのは `actual_value + 人工` のとき）
+
+**今回確認できなかったケース:**
+- 小工程が `actual_value + 人工` に設定されている大工程（このデモデータには存在しない）
+- その場合の UI 表示（要件定義書では DOM 操作プロトタイプで確認済み）
+
+---
+
 ## 未解決・確認待ち事項
 
 - [ ] `planned_value` と `target` のどちらを目標値として使うか（シリアライザには両方ある）
