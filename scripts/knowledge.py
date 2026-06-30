@@ -3,17 +3,18 @@
 
 Usage:
     uv run scripts/knowledge.py status
-    uv run scripts/knowledge.py new <domain> <aspect> [--type code_analysis|requirements|bug|pattern]
+    uv run scripts/knowledge.py new <domain> <aspect> \
+        [--type code_analysis|requirements|bug|pattern]
     uv run scripts/knowledge.py find <domain>
 """
 
 from __future__ import annotations
 
 import argparse
+from datetime import UTC, datetime
+from pathlib import Path
 import subprocess
 import sys
-from datetime import date
-from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
 KNOWLEDGE_DIR = REPO_ROOT / "knowledge"
@@ -87,21 +88,22 @@ def _grep_repo(repo: Path, keyword: str, extensions: list[str]) -> None:
     for ext in extensions:
         cmd.extend(["--include", f"*.{ext}"])
 
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)  # noqa: S603
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     lines = result.stdout.strip().splitlines()
     if lines:
         for line in sorted(lines):
             print(f"  {Path(line).relative_to(repo)}")
     else:
-        print(f"  （見つかりませんでした: {keyword}）")
+        print(f"  (見つかりませんでした: {keyword})")
 
 
 def _template(domain: str, aspect: str, kind: str) -> str:
+    today = datetime.now(tz=UTC).date()
     return f"""\
 ---
 domain: {domain}/{aspect}
 type: {kind}
-generated_at: {date.today()}
+generated_at: {today}
 code_sources: []
 status: draft
 last_reviewed_by: ~
@@ -179,11 +181,14 @@ def main() -> None:
     p_find.add_argument("domain", help="例: schedule, attendance")
 
     args = parser.parse_args()
-    {
-        "status": cmd_status,
-        "new": cmd_new,
-        "find": cmd_find,
-    }.get(args.command, lambda _: parser.print_help())(args)
+    if args.command == "status":
+        cmd_status(args)
+    elif args.command == "new":
+        cmd_new(args)
+    elif args.command == "find":
+        cmd_find(args)
+    else:
+        parser.print_help()
 
 
 if __name__ == "__main__":

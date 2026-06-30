@@ -3,12 +3,11 @@
 
 from __future__ import annotations
 
-import sys
+import os
 from pathlib import Path
+import sys
 
 from dotenv import load_dotenv
-import os
-
 from playwright.sync_api import sync_playwright
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -36,7 +35,7 @@ with sync_playwright() as p:
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/120.0.0.0 Safari/537.36"
-        )
+        ),
     )
     page = context.new_page()
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Playwright capture: screenshot + AOM snapshot → captures/
+"""Playwright capture: screenshot + AOM snapshot -> captures/
 
 Usage:
     # 初回: 認証状態を保存
@@ -15,15 +15,16 @@ Output:
     captures/screenshots/{slug}.png   gitignore 済み（生データ）
     captures/aom/{slug}.yaml          gitignore 済み（生データ）
 
-→ Claude がセッション中に captures/aom/*.yaml を読んで knowledge/ に変換する。
+-> Claude がセッション中に captures/aom/*.yaml を読んで knowledge/ に変換する。
 """
 
 from __future__ import annotations
 
 import argparse
+import os
+from pathlib import Path
 import re
 import sys
-from pathlib import Path
 from urllib.parse import urlparse
 
 from playwright.sync_api import sync_playwright
@@ -32,13 +33,51 @@ REPO_ROOT = Path(__file__).parent.parent
 CAPTURES_DIR = REPO_ROOT / "captures"
 AUTH_FILE = CAPTURES_DIR / "auth.json"
 BASE_URL = "https://sekou.work.careecon.jp"
+OAUTH_URL = "https://oauth.careecon.jp/oauth/sign_in"
 
 
 def cmd_login(_args: argparse.Namespace) -> None:
-    """Interactive login — saves auth state to captures/auth.json."""
-    CAPTURES_DIR.mkdir(exist_ok=True)
-    print("ブラウザが開きます。ログインしてください。完了後 Enter を押してください。")
+    """Login and save auth state.
 
+    Headless mode (env vars): CAREECON_EMAIL + CAREECON_PASSWORD を設定した場合
+    Interactive mode: ブラウザを開いて手動ログイン
+    """
+    CAPTURES_DIR.mkdir(exist_ok=True)
+
+    email = os.environ.get("CAREECON_EMAIL")
+    password = os.environ.get("CAREECON_PASSWORD")
+
+    if email and password:
+        _headless_login(email, password)
+    else:
+        _interactive_login()
+
+
+def _headless_login(email: str, password: str) -> None:
+    print(f"Headless ログイン: {email}")
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context()
+        page = context.new_page()
+        page.goto(f"{BASE_URL}/sign_in", wait_until="networkidle")
+
+        # OAuth ログインページへのリダイレクトを待つ
+        page.get_by_role("button", name="ログイン").click()
+        page.wait_for_url("**/oauth/**", timeout=10000)
+
+        page.get_by_label("メールアドレス").fill(email)
+        page.get_by_label("パスワード").fill(password)
+        page.get_by_role("button", name="ログイン").click()
+        page.wait_for_url(f"{BASE_URL}/**", timeout=15000)
+
+        context.storage_state(path=str(AUTH_FILE))
+        browser.close()
+
+    print(f"認証状態を保存しました: {AUTH_FILE.relative_to(REPO_ROOT)}")
+
+
+def _interactive_login() -> None:
+    print("ブラウザが開きます。ログインしてください。完了後 Enter を押してください。")
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)
         context = browser.new_context()
@@ -61,7 +100,7 @@ def cmd_snap(args: argparse.Namespace) -> None:
     slug: str = args.name or _url_to_slug(url)
 
     _capture(url, slug)
-    print(f"\n→ knowledge への変換: Claude に captures/aom/{slug}.yaml を読ませてください。")
+    print(f"\n-> knowledge への変換: Claude に captures/aom/{slug}.yaml を読ませてください。")
 
 
 def cmd_batch(_args: argparse.Namespace) -> None:
@@ -79,9 +118,9 @@ def cmd_batch(_args: argparse.Namespace) -> None:
         try:
             _capture(url, slug)
         except Exception as e:  # noqa: BLE001
-            print(f"    ✗ エラー: {e}")
+            print(f"    x エラー: {e}")
 
-    print(f"\n完了。captures/aom/*.yaml を Claude に読ませてください。")
+    print("\n完了。captures/aom/*.yaml を Claude に読ませてください。")
 
 
 def _capture(url: str, slug: str) -> None:
@@ -108,36 +147,11 @@ def _capture(url: str, slug: str) -> None:
         page.screenshot(path=str(screenshot_path), full_page=True)
 
         # AOM スナップショット（Playwright の aria snapshot）
-        aom = page.accessibility.snapshot()
-        aom_path.write_text(_aom_to_yaml(aom), encoding="utf-8")
+        aom_path.write_text(page.aria_snapshot(), encoding="utf-8")
 
         browser.close()
 
-    print(f"    ✓ {slug}")
-
-
-def _aom_to_yaml(node: dict | None, indent: int = 0) -> str:
-    """Convert Playwright accessibility snapshot dict to YAML-like string."""
-    if node is None:
-        return ""
-
-    lines: list[str] = []
-    prefix = "  " * indent
-    role = node.get("role", "")
-    name = node.get("name", "")
-    value = node.get("value", "")
-
-    line = f"{prefix}- {role}"
-    if name:
-        line += f' "{name}"'
-    if value:
-        line += f" [value={value}]"
-    lines.append(line)
-
-    for child in node.get("children", []):
-        lines.append(_aom_to_yaml(child, indent + 1))
-
-    return "\n".join(lines)
+    print(f"    ok {slug}")
 
 
 def _url_to_slug(url: str) -> str:
@@ -153,8 +167,8 @@ def _extract_urls_from_routes(routes_file: Path) -> list[tuple[str, str]]:
     for line in routes_file.read_text(encoding="utf-8").splitlines():
         m = pattern.search(line)
         if m:
-            url, label = m.group(1), m.group(2).strip()
-            # パラメータを含むURLはスキップ（:id などの動的パス）
+            url = m.group(1)
+            # パラメータを含む URL はスキップ（:id などの動的パス）
             if ":" not in url:
                 slug = _url_to_slug(url)
                 results.append((url, slug))
@@ -162,23 +176,27 @@ def _extract_urls_from_routes(routes_file: Path) -> list[tuple[str, str]]:
 
 
 def main() -> None:
+    """Entry point."""
     parser = argparse.ArgumentParser(description="Playwright capture tool")
     sub = parser.add_subparsers(dest="command")
 
-    sub.add_parser("login", help="ブラウザを開いてログイン → 認証状態を保存")
+    sub.add_parser("login", help="ブラウザを開いてログイン -> 認証状態を保存")
 
     p_snap = sub.add_parser("snap", help="1画面をキャプチャ")
     p_snap.add_argument("url", help="例: /companies/123/projects/456/schedule/print")
-    p_snap.add_argument("--name", help="出力ファイル名（省略時はURLから生成）")
+    p_snap.add_argument("--name", help="出力ファイル名 (省略時は URL から生成)")
 
     sub.add_parser("batch", help="routes.md の全画面を一括キャプチャ")
 
     args = parser.parse_args()
-    {
-        "login": cmd_login,
-        "snap": cmd_snap,
-        "batch": cmd_batch,
-    }.get(args.command, lambda _: parser.print_help())(args)
+    if args.command == "login":
+        cmd_login(args)
+    elif args.command == "snap":
+        cmd_snap(args)
+    elif args.command == "batch":
+        cmd_batch(args)
+    else:
+        parser.print_help()
 
 
 if __name__ == "__main__":
