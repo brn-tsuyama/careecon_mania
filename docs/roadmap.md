@@ -26,6 +26,7 @@ Phase 3  careecon 自体を MCP サーバーとして公開
 |---|---|
 | `knowledge/navigation/routes.md` | 全63画面のURLマップ |
 | `knowledge/domains/schedule/print.md` | 工程表印刷（モデル・API・バグ含む） |
+| `knowledge/domains/auth/guest-registration.md` | ゲスト招待時の登録フロー設計（FE/BE 調査・リスク評価含む） |
 | `knowledge/patterns/service-layer.md` | サービス層パターン |
 | `scripts/knowledge.py` | status確認・テンプレート生成・ファイル検索 |
 | `scripts/capture.py` | Playwright スクショ + AOM キャプチャ |

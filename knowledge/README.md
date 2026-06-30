@@ -15,6 +15,8 @@ knowledge/
 ├── navigation/
 │   └── routes.md               # 全63画面のURLマップ ✅
 ├── domains/
+│   ├── auth/                   # 認証・登録フロー
+│   │   └── guest-registration.md  # ゲスト招待時の登録設計 ✅ [BE判断待ち]
 │   ├── schedule/               # 工程表（優先度1）
 │   │   └── print.md            # 印刷機能 ✅
 │   ├── daily-report/           # 日報（優先度2）
