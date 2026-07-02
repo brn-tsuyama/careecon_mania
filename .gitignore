@@ -212,6 +212,9 @@ captures/
 # NotebookLM 用フラット化エクスポート (knowledge/ から生成。commit 不要)
 knowledge_nblm/
 
+# 新機能設計・壁打ちの作業ディレクトリ（commit 不要。knowledge/ への変換後に削除）
+rdd_ideation/
+
 # PyPI configuration file
 .pypirc
 
