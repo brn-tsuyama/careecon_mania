@@ -1,15 +1,22 @@
 ---
 domain: schedule/print
-generated_at: 2026-06-29
+generated_at: 2026-07-02
 code_sources:
   - careecon_work/app/models/published_schedule.rb
   - careecon_work/app/models/published_large_process.rb
   - careecon_work/app/models/published_small_process.rb
+  - careecon_work/app/models/companies_user.rb
   - careecon_work/app/controllers/api/v2/published_large_processes_controller.rb
+  - careecon_work/app/controllers/published_schedules_controller.rb
+  - careecon_work/app/policies/published_schedule_policy.rb
+  - careecon_work/app/policies/published_large_process_policy.rb
+  - careecon_work/app/policies/published_small_process_policy.rb
+  - careecon_work/app/policies/published_schedule_plan_policy.rb
   - careecon_work/app/services/published_large_process/search_service.rb
   - careecon_work/app/services/published_schedule/search_service.rb
   - careecon_work_frontend/src/pages/companies/_company_id/projects/_id/schedule/print/index.vue
   - careecon_work_frontend/src/components/print/molecules/schedule-print-setting-dialog.vue
+  - careecon_work_frontend/src/components/print/organisms/header.vue
   - careecon_work_frontend/src/components/schedule/templates/print/preview.vue
   - careecon_work_frontend/src/mixins/schedule/fetch-published-schedule-mixin.ts
   - careecon_work_frontend/src/plugins/apis/v2/schedule-api-client.ts
@@ -180,6 +187,30 @@ pages/schedule/print/index.vue
 | 注意事項 | Textarea（最大150文字） | `form.note` |
 
 設定は `PublishedSchedule.print_settings`（JSON）に保存される。
+
+---
+
+## 権限（認可）
+
+**結論: 印刷は管理者限定ではない。案件メンバーであれば guest でも「閲覧・印刷実行・PDFダウンロード」が可能。管理者限定なのは「印刷設定の変更」のみ。**
+
+印刷固有の権限は独立して存在せず、工程表本体（`PublishedSchedule`）の閲覧・ダウンロード権限がそのまま流用される。
+
+| user_type | 印刷ページ閲覧 | 印刷実行/ダウンロード | 印刷設定の変更 |
+|---|---|---|---|
+| guest（案件にアサイン済み） | ○ | ○ | ×（disabled） |
+| guest（案件に未アサイン） | ×（BE 403） | × | × |
+| member | ○ | ○ | ○ |
+| admin / super_admin | ○ | ○ | ○ |
+
+根拠:
+- `companies_user.rb:10` — `enum user_type: { guest: 1, member: 2, admin: 3, super_admin: 100 }`
+- `app/policies/published_schedule_policy.rb#show?` — over_member（guest以外）は会社所属チェックのみ、guestは `assigned_project?`（案件へのアサイン）が必須
+- `app/policies/published_schedule_policy.rb#download?`（PDF実データ取得。`published_schedules_controller.rb#download`）— over_memberは会社の公開工程表なら可、guestもアサイン済み案件なら可。**admin限定の記述は存在しない**
+- `published_large_process_policy.rb` / `published_small_process_policy.rb` / `published_schedule_plan_policy.rb` も同様のパターン（guest以外は常時可、guestのみ案件アサイン条件）
+- FE: `src/components/print/organisms/header.vue:9-46` — 「ダウンロード」「印刷」ボタンに権限チェックなし
+- FE: `src/components/print/organisms/header.vue:109-117` — 「印刷設定」ボタンのみ `isPrintSettingsDisabled`（`!isAdmin && !isMember`）でguestに対し disabled（v-ifで隠しているのではなく押せなくしているだけ）
+- `/schedule/print` ルートにmiddlewareガードはなく、「プロジェクトに到達できる＝メンバーである」ことが事実上の前提
 
 ---
 
