@@ -8,18 +8,6 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = []
 
-[project.optional-dependencies]
-dev = [
-    "ruff>=0.9.0",
-    "mypy>=1.14.0",
-    "pytest>=8.0.0",
-    "pytest-cov>=6.0.0",
-    "pytest-xdist>=3.6.0",
-    "pre-commit>=4.0.0",
-    "playwright>=1.40.0",
-    "pyyaml>=6.0.0",
-]
-
 # ---------------------------------------------------------------------------
 # Ruff — 鬼厳しい設定
 # ---------------------------------------------------------------------------
@@ -115,6 +103,7 @@ unfixable = [
 "tests/**/*.py" = [
     "ANN",    # テストは型アノテーション免除
     "D",      # テストは docstring 免除
+    "S101",   # テストでの assert は許容（CI の `--select S` 単独実行でも効くよう per-file-ignores に置く）
     "SLF001", # private メンバーへのアクセス許容
     "PLR2004",# magic value 許容
     "FBT",    # boolean trap 許容
@@ -265,6 +254,12 @@ exclude_lines = [
 
 [dependency-groups]
 dev = [
+    "ruff>=0.9.0",
+    "mypy>=1.14.0",
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+    "pytest-xdist>=3.6.0",
+    "pre-commit>=4.0.0",
     "playwright>=1.60.0",
     "python-dotenv>=1.2.2",
     "pyyaml>=6.0.3",
