@@ -73,6 +73,28 @@ def cmd_find(args: argparse.Namespace) -> None:
     _show_find_results(args.domain)
 
 
+def cmd_export_nblm(_args: argparse.Namespace) -> None:
+    """Flatten knowledge/ into knowledge_nblm/ for bulk upload to NotebookLM.
+
+    NotebookLM のソース追加はフォルダ選択ではなく複数ファイル選択のため、
+    knowledge/domains/schedule/print.md のような階層構造だと1つずつしか拾えない。
+    ここではファイル名にパスを埋め込んでフラット化し、一括選択できるようにする。
+    """
+    out_dir = REPO_ROOT / "knowledge_nblm"
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
+    out_dir.mkdir(parents=True)
+
+    md_files = sorted(KNOWLEDGE_DIR.rglob("*.md"))
+    for f in md_files:
+        rel = f.relative_to(KNOWLEDGE_DIR)
+        flat_name = "__".join(rel.parts)
+        (out_dir / flat_name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
+
+    print(f"{len(md_files)} ファイルを {out_dir.relative_to(REPO_ROOT)}/ に書き出しました。")
+    print("NotebookLM の「ソースを追加」でこのフォルダの中身を全選択してアップロードしてください。")
+
+
 def _show_find_results(domain: str) -> None:
     keyword = domain.replace("-", "_")
     print(f"\n=== BE: {BE_REPO} ===")
@@ -97,28 +119,6 @@ def _grep_repo(repo: Path, keyword: str, extensions: list[str]) -> None:
             print(f"  {Path(line).relative_to(repo)}")
     else:
         print(f"  (見つかりませんでした: {keyword})")
-
-
-def cmd_export_nblm(_args: argparse.Namespace) -> None:
-    """Flatten knowledge/ into knowledge_nblm/ for bulk upload to NotebookLM.
-
-    NotebookLM のソース追加はフォルダ選択ではなく複数ファイル選択のため、
-    knowledge/domains/schedule/print.md のような階層構造だと1つずつしか拾えない。
-    ここではファイル名にパスを埋め込んでフラット化し、一括選択できるようにする。
-    """
-    out_dir = REPO_ROOT / "knowledge_nblm"
-    if out_dir.exists():
-        shutil.rmtree(out_dir)
-    out_dir.mkdir(parents=True)
-
-    md_files = sorted(KNOWLEDGE_DIR.rglob("*.md"))
-    for f in md_files:
-        rel = f.relative_to(KNOWLEDGE_DIR)
-        flat_name = "__".join(rel.parts)
-        (out_dir / flat_name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
-
-    print(f"{len(md_files)} ファイルを {out_dir.relative_to(REPO_ROOT)}/ に書き出しました。")
-    print("NotebookLM の「ソースを追加」でこのフォルダの中身を全選択してアップロードしてください。")
 
 
 def _template(domain: str, aspect: str, kind: str) -> str:
