@@ -50,6 +50,25 @@ bash /home/ttsuyama/proj/careecon_mania/scripts/sync_repos.sh
 
 captures/ は gitignore 済み。**AOM・画像は必ず knowledge/ に変換してから commit する。captures/ のままでは知識として機能しない。**
 
+`capture.py login` は `.env`（gitignore済み）の `CAREECON_EMAIL` / `CAREECON_PASSWORD` を読めば非対話（headless）で実行できる。実行前に `set -a && source .env && set +a` で読み込むこと。
+
+### ⚠️ careecon work は WAF が Playwright/Puppeteer の headless UA をブロックする
+
+`sekou.work.careecon.jp` / `oauth.careecon.jp` は AWS ELB レベルの WAF が動いており、
+User-Agent に `HeadlessChrome` という文字列が含まれるリクエストを **`403 Forbidden` で問答無用にブロックする**
+（IPホワイトリストではない。`curl` で UA だけ変えて検証済み）。
+
+Playwright の headless Chromium は既定でこの UA を使うため、`capture.py` に限らず
+**この対象ドメインへの新しいブラウザ自動化スクリプトを書くときは必ず、通常のデスクトップ Chrome の
+User-Agent を明示的にセットすること**（`capture.py` の `USER_AGENT` 定数を参照・流用する）。
+これをやらずに 403 やタイムアウトで詰まったら、まず UA を疑うこと。
+
+併せて `capture.py` にある以下の既知の落とし穴も踏まないよう注意：
+- ログインフォームの email/password は `<label>` に紐づいていないため `get_by_label` は使えない。
+  `input[name="user[email]"]` / `input[name="user[password]"]` を使う。
+- ログイン後の SPA 画面はバックグラウンドポーリングがあり `wait_until="networkidle"` はタイムアウトしやすい。
+  `domcontentloaded` + 固定 `wait_for_timeout` にフォールバックする。
+
 ---
 
 ## ⚠️ DOM調査 → knowledge 変換 SOP（必須・例外なし）

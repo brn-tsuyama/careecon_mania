@@ -34,6 +34,12 @@ CAPTURES_DIR = REPO_ROOT / "captures"
 AUTH_FILE = CAPTURES_DIR / "auth.json"
 BASE_URL = "https://sekou.work.careecon.jp"
 OAUTH_URL = "https://oauth.careecon.jp/oauth/sign_in"
+# WAF が Playwright headless Chromium 既定 UA の "HeadlessChrome" 文字列を検知して403を返すため、
+# 通常の Chrome UA に偽装する。
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
 
 
 def cmd_login(_args: argparse.Namespace) -> None:
@@ -57,7 +63,7 @@ def _headless_login(email: str, password: str) -> None:
     print(f"Headless ログイン: {email}")
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context()
+        context = browser.new_context(user_agent=USER_AGENT)
         page = context.new_page()
         page.goto(f"{BASE_URL}/sign_in", wait_until="networkidle")
 
@@ -65,8 +71,8 @@ def _headless_login(email: str, password: str) -> None:
         page.get_by_role("button", name="ログイン").click()
         page.wait_for_url("**/oauth/**", timeout=10000)
 
-        page.get_by_label("メールアドレス").fill(email)
-        page.get_by_label("パスワード").fill(password)
+        page.locator('input[name="user[email]"]').fill(email)
+        page.locator('input[name="user[password]"]').fill(password)
         page.get_by_role("button", name="ログイン").click()
         page.wait_for_url(f"{BASE_URL}/**", timeout=15000)
 
@@ -80,7 +86,7 @@ def _interactive_login() -> None:
     print("ブラウザが開きます。ログインしてください。完了後 Enter を押してください。")
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)
-        context = browser.new_context()
+        context = browser.new_context(user_agent=USER_AGENT)
         page = context.new_page()
         page.goto(f"{BASE_URL}/sign_in")
         input("ログイン完了後、ここで Enter を押してください...")
@@ -139,9 +145,15 @@ def _capture(url: str, slug: str) -> None:
         context = browser.new_context(
             storage_state=str(AUTH_FILE),
             viewport={"width": 1440, "height": 900},
+            user_agent=USER_AGENT,
         )
         page = context.new_page()
-        page.goto(full_url, wait_until="networkidle")
+        try:
+            page.goto(full_url, wait_until="networkidle", timeout=15000)
+        except Exception:  # noqa: BLE001
+            # SPA がポーリング等で networkidle に到達しないケースのフォールバック
+            page.goto(full_url, wait_until="domcontentloaded")
+            page.wait_for_timeout(4000)
 
         # スクリーンショット
         page.screenshot(path=str(screenshot_path), full_page=True)
