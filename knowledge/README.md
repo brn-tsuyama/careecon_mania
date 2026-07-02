@@ -52,6 +52,7 @@ uv run scripts/capture.py snap <url>   # AOM を captures/ に保存
 | `draft` | 生成済み・未レビュー | 参考程度 |
 | `reviewed` | 人間がレビュー済み | 信頼して使用 |
 | `approved` | 追記・承認済み | 優先参照 |
+| `superseded_by_code` | 実装済み。実装詳細はコードを見ること | [ドメイン知識] セクションのみ参照。実装メモは無視 |
 
 ## カバレッジ確認
 

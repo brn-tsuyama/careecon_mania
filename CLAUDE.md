@@ -187,23 +187,7 @@ DOM調査・画面キャプチャを行った → UI セクションを更新（
 
 ### 2. ファイルのフォーマットを守る
 
-```yaml
----
-domain: {ドメイン名}
-type: code_analysis | requirements | bug | pattern
-generated_at: {YYYY-MM-DD}
-code_sources:
-  - {参照したファイルパス}
-ui_sources:           # DOM調査を行った場合のみ追加
-  - url: {画面URL}
-    captured_at: {YYYY-MM-DD}
-    method: aom | screenshot | code_analysis
-status: draft
----
-```
-
-- `[Claude生成]` セクション — Claude が書く
-- `[Human]` セクション — 人間が追記する。**Claude は絶対に上書きしない**
+フロントマター schema・`[Claude生成]`/`[Human]` の使い分けは `knowledge/README.md` 参照。
 
 ### 3. status のルール
 
@@ -245,18 +229,7 @@ knowledge ファイルに `superseded_by_code` が付いた実装メモセクシ
 
 ## knowledge/ の構成
 
-```
-knowledge/
-├── navigation/routes.md        # 全画面マップ
-├── domains/
-│   ├── auth/                   # 認証・登録フロー
-│   ├── schedule/               # 工程表（優先度1）
-│   ├── daily-report/           # 日報（優先度2）
-│   ├── attendance/             # 勤怠（優先度3）
-│   ├── board/                  # 掲示板（優先度4）
-│   └── project/                # 案件管理（優先度5）
-└── patterns/                   # コーディングパターン
-```
+→ `knowledge/README.md` 参照
 
 ---
 
