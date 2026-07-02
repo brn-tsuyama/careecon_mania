@@ -6,6 +6,7 @@ Usage:
     uv run scripts/knowledge.py new <domain> <aspect> \
         [--type code_analysis|requirements|bug|pattern]
     uv run scripts/knowledge.py find <domain>
+    uv run scripts/knowledge.py export-nblm
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from __future__ import annotations
 import argparse
 from datetime import UTC, datetime
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
@@ -95,6 +97,28 @@ def _grep_repo(repo: Path, keyword: str, extensions: list[str]) -> None:
             print(f"  {Path(line).relative_to(repo)}")
     else:
         print(f"  (見つかりませんでした: {keyword})")
+
+
+def cmd_export_nblm(_args: argparse.Namespace) -> None:
+    """Flatten knowledge/ into knowledge_nblm/ for bulk upload to NotebookLM.
+
+    NotebookLM のソース追加はフォルダ選択ではなく複数ファイル選択のため、
+    knowledge/domains/schedule/print.md のような階層構造だと1つずつしか拾えない。
+    ここではファイル名にパスを埋め込んでフラット化し、一括選択できるようにする。
+    """
+    out_dir = REPO_ROOT / "knowledge_nblm"
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
+    out_dir.mkdir(parents=True)
+
+    md_files = sorted(KNOWLEDGE_DIR.rglob("*.md"))
+    for f in md_files:
+        rel = f.relative_to(KNOWLEDGE_DIR)
+        flat_name = "__".join(rel.parts)
+        (out_dir / flat_name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
+
+    print(f"{len(md_files)} ファイルを {out_dir.relative_to(REPO_ROOT)}/ に書き出しました。")
+    print("NotebookLM の「ソースを追加」でこのフォルダの中身を全選択してアップロードしてください。")
 
 
 def _template(domain: str, aspect: str, kind: str) -> str:
@@ -180,6 +204,8 @@ def main() -> None:
     p_find = sub.add_parser("find", help="両リポジトリから関連ファイルを検索")
     p_find.add_argument("domain", help="例: schedule, attendance")
 
+    sub.add_parser("export-nblm", help="NotebookLM 用にフラット化して knowledge_nblm/ へ書き出す")
+
     args = parser.parse_args()
     if args.command == "status":
         cmd_status(args)
@@ -187,6 +213,8 @@ def main() -> None:
         cmd_new(args)
     elif args.command == "find":
         cmd_find(args)
+    elif args.command == "export-nblm":
+        cmd_export_nblm(args)
     else:
         parser.print_help()
 

@@ -58,3 +58,15 @@ uv run scripts/capture.py snap <url>   # AOM を captures/ に保存
 ```bash
 uv run scripts/knowledge.py status
 ```
+
+## NotebookLM 用にまとめて出力する
+
+`knowledge/` は `domains/schedule/print.md` のように階層化されているため、NotebookLM の
+ソース追加（複数ファイル選択）に1つずつしか拾えず面倒。以下で `knowledge_nblm/`
+（1階層のフラットな複製、gitignore 済み・再生成可能）に書き出せる。
+
+```bash
+uv run scripts/knowledge.py export-nblm
+# → knowledge_nblm/domains__schedule__print.md のようにパスをファイル名に埋め込んでフラット化
+# → knowledge_nblm/ を開いて全選択 → NotebookLM の「ソースを追加」にドラッグ&ドロップ
+```
