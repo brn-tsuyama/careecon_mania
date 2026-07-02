@@ -86,12 +86,13 @@ status: draft
 
 | URL | ページ | 説明 | ui_status |
 |---|---|---|---|
-| `/projects/:id/board_posts` | 掲示板トップ | - | pending |
-| `/projects/:id/board_posts/index` | 掲示板一覧 | - | pending |
-| `/projects/:id/board_posts/new` | 投稿作成 | - | pending |
-| `/projects/:id/board_posts/posts` | 投稿一覧（別ビュー） | - | pending |
-| `/projects/:id/board_posts/:board_id` | 投稿詳細 | - | pending |
-| `/projects/:id/board_posts/:board_id/edit` | 投稿編集 | - | pending |
+| `/projects/:id/board_posts` | 掲示板トップ（カテゴリ別ホーム） | knowledge/domains/board/overview.md参照 | done |
+| `/projects/:id/board_posts/index` | 掲示板一覧（要再検証: FEコード上は独立ルートとして未確認） | - | pending |
+| `/projects/:id/board_posts/new` | 投稿作成 | knowledge/domains/board/overview.md参照 | done |
+| `/projects/:id/board_posts/posts` | 投稿一覧（カテゴリ/テキスト絞り込み） | knowledge/domains/board/overview.md参照 | done |
+| `/projects/:id/board_posts/:board_id` | 投稿詳細（既読/コメント/添付） | knowledge/domains/board/overview.md参照 | done |
+| `/projects/:id/board_posts/:board_id/edit` | 投稿編集 | post-form.vue再利用（isEdit）。DOM未検証 | pending |
+| `/projects/:id/board_posts/:board_id/files` | 添付ファイル一覧 | knowledge/domains/board/overview.md参照 | done |
 | `/projects/:id/board_posts/:board_id/files` | 投稿添付ファイル一覧 | - | pending |
 
 ### 日報
