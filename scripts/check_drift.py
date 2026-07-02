@@ -26,13 +26,12 @@ import json
 from pathlib import Path
 import re
 import subprocess
-import sys
+from typing import cast
 
 REPO_ROOT = Path(__file__).parent.parent
 PARENT_DIR = REPO_ROOT.parent
 KNOWLEDGE_DIR = REPO_ROOT / "knowledge"
 CHECKPOINT_FILE = REPO_ROOT / ".sync_checkpoint.json"
-BRANCH = "staging"
 
 # リポジトリ名 -> knowledge/domains の code_sources で使われているプレフィックス
 TRACKED_REPOS = ["careecon_work", "careecon_work_frontend", "keiei_plus", "careecon_cas"]
@@ -50,10 +49,31 @@ STRUCTURAL_MARKERS = [
 ]
 DIFF_LINE_THRESHOLD = 20
 UI_LIKE_EXTENSIONS = {".vue", ".tsx", ".jsx"}
+PREVIEW_FILE_LIMIT = 8
+UNCOVERED_FILE_LIMIT = 10
 
 
 def main() -> None:
+    """Diff each tracked repo against its checkpoint and report affected domains."""
     old_checkpoint = _load_checkpoint()
+    new_checkpoint, repo_diffs = _diff_repos(old_checkpoint)
+
+    if not repo_diffs:
+        _save_checkpoint(new_checkpoint)
+        print("\n差分なし。ドメイン再調査は不要です。")
+        return
+
+    domains = _load_domain_code_sources()
+    affected_domains, uncovered = _match_domains(repo_diffs, domains)
+    flagged_fe_files = _check_dom_heuristic(repo_diffs, old_checkpoint)
+
+    _print_report(affected_domains, uncovered, flagged_fe_files)
+    _save_checkpoint(new_checkpoint)
+
+
+def _diff_repos(
+    old_checkpoint: dict[str, str],
+) -> tuple[dict[str, str], dict[str, list[str]]]:
     new_checkpoint: dict[str, str] = {}
     repo_diffs: dict[str, list[str]] = {}
 
@@ -64,77 +84,97 @@ def main() -> None:
 
         current_sha = _git(repo_path, "rev-parse", "HEAD")
         new_checkpoint[name] = current_sha
+        files = _diff_one_repo(name, repo_path, old_checkpoint.get(name), current_sha)
+        if files is not None:
+            repo_diffs[name] = files
 
-        old_sha = old_checkpoint.get(name)
-        if old_sha is None:
-            print(f"○ {name}: 初回チェックポイント記録（{current_sha[:8]}）。次回 sync から差分検知します。")
-            continue
+    return new_checkpoint, repo_diffs
 
-        if old_sha == current_sha:
-            print(f"- {name}: 変更なし（{current_sha[:8]}）")
-            continue
 
-        changed = _git(repo_path, "diff", "--name-only", old_sha, current_sha, check=False)
-        if changed is None:
-            print(f"⚠ {name}: 前回チェックポイント {old_sha[:8]} が見つかりません（force-push等）。全面再調査を推奨。")
-            repo_diffs[name] = []
-            continue
+def _diff_one_repo(
+    name: str,
+    repo_path: Path,
+    old_sha: str | None,
+    current_sha: str,
+) -> list[str] | None:
+    short = current_sha[:8]
+    if old_sha is None:
+        print(f"○ {name}: 初回チェックポイント記録（{short}）。次回 sync から差分検知します。")
+        return None
 
-        files = [f for f in changed.splitlines() if f]
-        repo_diffs[name] = files
-        print(f"→ {name}: {old_sha[:8]}..{current_sha[:8]} で {len(files)} ファイル変更")
+    if old_sha == current_sha:
+        print(f"- {name}: 変更なし（{short}）")
+        return None
 
-    if not repo_diffs:
-        _save_checkpoint(new_checkpoint)
-        print("\n差分なし。ドメイン再調査は不要です。")
-        return
+    changed = _git_optional(repo_path, "diff", "--name-only", old_sha, current_sha)
+    if changed is None:
+        old_short = old_sha[:8]
+        print(f"⚠ {name}: 前回チェックポイント {old_short} が見つかりません")
+        print("  (force-push等。全面再調査を推奨)")
+        return []
 
-    domains = _load_domain_code_sources()
-    affected_domains, uncovered = _match_domains(repo_diffs, domains)
-    flagged_fe_files = _check_dom_heuristic(repo_diffs)
+    files = [f for f in changed.splitlines() if f]
+    print(f"→ {name}: {old_sha[:8]}..{short} で {len(files)} ファイル変更")
+    return files
 
+
+def _print_report(
+    affected_domains: dict[str, list[str]],
+    uncovered: dict[str, list[str]],
+    flagged_fe_files: set[str],
+) -> None:
     print("\n" + "=" * 60)
     if affected_domains:
         print("【BE/FE再調査対象ドメイン】(無条件で調査し直すこと)")
         for domain, files in sorted(affected_domains.items()):
-            fe_relpaths = {
-                f.split("/", 1)[1]
-                for f in files
-                if f.startswith("careecon_work_frontend/")
-            }
-            dom_marker = " ※DOM再検証も推奨（UI構造の変化を検知）" if fe_relpaths & flagged_fe_files else ""
-            print(f"  - {domain}{dom_marker}")
-            for f in files[:8]:
-                print(f"      {f}")
-            if len(files) > 8:
-                print(f"      ...ほか{len(files) - 8}件")
+            print(f"  - {domain}{_dom_marker(files, flagged_fe_files)}")
+            _print_file_list(files, PREVIEW_FILE_LIMIT, indent="      ")
     else:
         print("既存ドメインへの影響は検出されませんでした。")
 
     if uncovered:
         print("\n【どのドメインのcode_sourcesにも属さない変更】(新規ドメインの可能性)")
         for repo_name, files in uncovered.items():
-            for f in files[:10]:
-                print(f"  - {repo_name}/{f}")
-            if len(files) > 10:
-                print(f"  ...ほか{len(files) - 10}件")
+            prefixed = [f"{repo_name}/{f}" for f in files]
+            _print_file_list(prefixed, UNCOVERED_FILE_LIMIT, indent="  ")
 
     print("=" * 60)
 
-    _save_checkpoint(new_checkpoint)
+
+def _dom_marker(files: list[str], flagged_fe_files: set[str]) -> str:
+    fe_relpaths = {f.split("/", 1)[1] for f in files if f.startswith("careecon_work_frontend/")}
+    return " ※DOM再検証も推奨（UI構造の変化を検知）" if fe_relpaths & flagged_fe_files else ""
+
+
+def _print_file_list(files: list[str], limit: int, indent: str) -> None:
+    for f in files[:limit]:
+        print(f"{indent}{f}")
+    if len(files) > limit:
+        print(f"{indent}...ほか{len(files) - limit}件")
 
 
 def _load_checkpoint() -> dict[str, str]:
     if not CHECKPOINT_FILE.exists():
         return {}
-    return json.loads(CHECKPOINT_FILE.read_text(encoding="utf-8"))
+    return cast("dict[str, str]", json.loads(CHECKPOINT_FILE.read_text(encoding="utf-8")))
 
 
 def _save_checkpoint(data: dict[str, str]) -> None:
-    CHECKPOINT_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    body = json.dumps(data, indent=2, ensure_ascii=False)
+    CHECKPOINT_FILE.write_text(f"{body}\n", encoding="utf-8")
 
 
-def _git(repo_path: Path, *args: str, check: bool = True) -> str | None:
+def _git(repo_path: Path, *args: str) -> str:
+    """Run git, printing the error and exiting on failure."""
+    output = _git_optional(repo_path, *args)
+    if output is None:
+        error_message = f"git command failed in {repo_path}: {args}"
+        raise RuntimeError(error_message)
+    return output
+
+
+def _git_optional(repo_path: Path, *args: str) -> str | None:
+    """Run git, returning None on failure instead of raising."""
     result = subprocess.run(
         ["git", "-C", str(repo_path), *args],
         capture_output=True,
@@ -142,15 +182,12 @@ def _git(repo_path: Path, *args: str, check: bool = True) -> str | None:
         check=False,
     )
     if result.returncode != 0:
-        if check:
-            print(f"git error in {repo_path}: {result.stderr.strip()}", file=sys.stderr)
-            sys.exit(1)
         return None
     return result.stdout.strip()
 
 
 def _load_domain_code_sources() -> dict[str, list[str]]:
-    """domain名 (e.g. 'board/overview') -> code_sources のパス一覧（reponame/path/...）"""
+    """Map domain name (e.g. 'board/overview') to its code_sources paths (reponame/path/...)."""
     domains: dict[str, list[str]] = {}
     if not KNOWLEDGE_DIR.exists():
         return domains
@@ -199,50 +236,67 @@ def _match_domains(
 
     for domain_name, sources in domains.items():
         for repo_name, files in repo_diffs.items():
-            for src in sources:
-                if not src.startswith(f"{repo_name}/"):
-                    continue
-                rel_src = src[len(repo_name) + 1 :]
-                for f in files:
-                    if f == rel_src or f.startswith(rel_src.rstrip("/") + "/"):
-                        affected.setdefault(domain_name, []).append(f"{repo_name}/{f}")
-                        matched_files[repo_name].add(f)
+            _match_domain_repo(domain_name, sources, repo_name, files, affected, matched_files)
 
-    uncovered: dict[str, list[str]] = {}
-    for repo_name, files in repo_diffs.items():
-        remaining = [f for f in files if f not in matched_files.get(repo_name, set())]
-        if remaining:
-            uncovered[repo_name] = remaining
+    uncovered = {
+        repo_name: [f for f in files if f not in matched_files.get(repo_name, set())]
+        for repo_name, files in repo_diffs.items()
+    }
+    uncovered = {repo_name: files for repo_name, files in uncovered.items() if files}
 
     return affected, uncovered
 
 
-def _check_dom_heuristic(repo_diffs: dict[str, list[str]]) -> set[str]:
-    """FE の UI ファイル diff を見て、構造変化がありそうな相対パスの集合を返す。"""
+def _match_domain_repo(
+    domain_name: str,
+    sources: list[str],
+    repo_name: str,
+    files: list[str],
+    affected: dict[str, list[str]],
+    matched_files: dict[str, set[str]],
+) -> None:
+    prefix = f"{repo_name}/"
+    for src in sources:
+        if not src.startswith(prefix):
+            continue
+        rel_src = src[len(prefix) :].rstrip("/")
+        for f in files:
+            if f == rel_src or f.startswith(f"{rel_src}/"):
+                affected.setdefault(domain_name, []).append(f"{repo_name}/{f}")
+                matched_files[repo_name].add(f)
+
+
+def _check_dom_heuristic(
+    repo_diffs: dict[str, list[str]],
+    old_checkpoint: dict[str, str],
+) -> set[str]:
+    """Return relative FE paths whose diff looks structurally significant."""
     flagged_files: set[str] = set()
     fe_path = PARENT_DIR / "careecon_work_frontend"
     files = repo_diffs.get("careecon_work_frontend", [])
-    if not files or not fe_path.exists():
-        return flagged_files
-
-    old_checkpoint = _load_checkpoint()
     old_sha = old_checkpoint.get("careecon_work_frontend")
-    if old_sha is None:
+    if not files or not fe_path.exists() or old_sha is None:
         return flagged_files
-    new_sha = _git(fe_path, "rev-parse", "HEAD")
 
+    new_sha = _git(fe_path, "rev-parse", "HEAD")
     for f in files:
         if Path(f).suffix not in UI_LIKE_EXTENSIONS and "pages/" not in f:
             continue
-        diff_text = _git(fe_path, "diff", old_sha, new_sha, "--", f, check=False) or ""
-        changed_lines = sum(
-            1 for line in diff_text.splitlines() if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
-        )
-        has_marker = any(re.search(pattern, diff_text) for pattern in STRUCTURAL_MARKERS)
-        if has_marker or changed_lines >= DIFF_LINE_THRESHOLD:
+        if _is_structurally_significant(fe_path, old_sha, new_sha, f):
             flagged_files.add(f)
 
     return flagged_files
+
+
+def _is_structurally_significant(fe_path: Path, old_sha: str, new_sha: str, file_path: str) -> bool:
+    diff_text = _git_optional(fe_path, "diff", old_sha, new_sha, "--", file_path) or ""
+    changed_lines = sum(
+        1
+        for line in diff_text.splitlines()
+        if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
+    )
+    has_marker = any(re.search(pattern, diff_text) for pattern in STRUCTURAL_MARKERS)
+    return has_marker or changed_lines >= DIFF_LINE_THRESHOLD
 
 
 if __name__ == "__main__":
