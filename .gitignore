@@ -209,6 +209,9 @@ tempCodeRunnerFile.py
 # Playwright captures (生データ。knowledge/ に変換済みのものだけ commit する)
 captures/
 
+# sync_repos.sh のチェックポイント（ローカル環境固有の状態。commit 不要）
+.sync_checkpoint.json
+
 # NotebookLM 用フラット化エクスポート (knowledge/ から生成。commit 不要)
 knowledge_nblm/
 

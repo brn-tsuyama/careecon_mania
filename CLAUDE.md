@@ -34,6 +34,36 @@ bash /home/ttsuyama/proj/careecon_mania/scripts/sync_repos.sh
 - リポジトリが存在する → `master` pull（存在すれば）→ `staging` checkout & pull
 - 完了後に knowledge 作業を開始する
 
+### sync で新規コミットが入った場合の追従調査（選定コストをかけない）
+
+`sync_repos.sh` の末尾で `scripts/check_drift.py` が自動実行され、前回チェックポイントから
+新規コミットが入っていた場合に対象ドメインを検出する。
+「このドメインが影響を受けるか」を判定するコストをかけずに、**該当ドメインの BE/FE 調査は無条件でやり直す**。
+BE/FE のコード調査だけなら1ドメインあたり高々数万〜十数万トークン程度で、判定コストをかける方が高くつく。
+
+- チェックポイント: `.sync_checkpoint.json`（gitignore済み・ローカル状態）に各リポジトリの最終同期コミットSHAを
+  記録し、そこからの `git diff --name-only` でファイルを洗い出す
+- 差分ファイルが `knowledge/domains/*` の `code_sources` に含まれていれば該当ドメインを
+  「BE/FE再調査対象」としてターミナル出力に表示する（`scripts/check_drift.py` が自動判定）
+- 新規ディレクトリ・新規コントローラ/モデルなど既存どのdomainにも属さない差分は、新規ドメインとして
+  `knowledge/domains/` に追加を検討する（出力の「新規ドメイン候補」欄を確認）
+
+**DOM調査（実画面キャプチャ）だけは無条件にしない。** ログイン＋スクリーンショットは失敗しやすく
+コストの分散も大きいため、以下のヒューリスティクスで「見た目が構造的に変わった疑いがある」ときだけ発動する
+（FEの実装言語・フレームワークは将来変わりうる／`careecon_work_frontend`以外のFEリポジトリが対象に
+加わる可能性もあるため、特定のテンプレート構文に依存しない書き方にする）：
+
+- UIコンポーネントファイル（`.vue`/`.tsx`/`.jsx`や`pages/`配下）の diff に、ボタン・条件分岐表示・
+  ルーティングに該当する構造的な変更（`<button`, `v-if=`, `v-show=`, `v-for=`, `router-link`,
+  `<Link`, `useNavigate`, `<Route`等）が含まれる場合
+- 上記に該当しなくても、そのファイルの diff 行数が一定量（目安: 20行, `check_drift.py`内
+  `DIFF_LINE_THRESHOLD`）を超える場合
+
+`check_drift.py` の出力で対象ドメインに「※DOM再検証も推奨」と付いた場合のみ実画面キャプチャを行う。
+それ以外は BE/FE のコード調査結果だけを knowledge に反映し、`ui_status` は既存の値
+（`done`/`pending`等）を変えずに残す（DOM調査未実施のまま古いUI情報が正だと誤解されないよう、
+UIセクションを変更した場合のみ status を更新する）。
+
 ---
 
 ## スクリプト

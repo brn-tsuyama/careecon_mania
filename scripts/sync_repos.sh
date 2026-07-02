@@ -52,3 +52,7 @@ for ENTRY in "${REPOS[@]}"; do
 done
 
 echo "✅ 全リポジトリ更新完了。knowledge 更新を開始できます。"
+echo ""
+echo "🔍 前回 sync からの差分を確認中..."
+echo ""
+uv run --project "$(dirname "${BASH_SOURCE[0]}")/.." "$(dirname "${BASH_SOURCE[0]}")/check_drift.py"
